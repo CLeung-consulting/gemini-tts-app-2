@@ -82,7 +82,7 @@ def translate_text(client, text, language):
     """Step 1: Translate text using gemini-2.0-flash."""
     prompt = f"Translate the following text into {language}. Return ONLY the translation, optimized for spoken reading, with no extra commentary:\n\n{text}"
     response = client.models.generate_content(
-        model='gemini-2.0-flash',
+        model='gemini-3.8-flash-lite',
         contents=prompt
     )
     return response.text
@@ -98,7 +98,7 @@ def generate_audio(client, text, voice):
     """Step 2: Generate audio soundtrack using gemini-2.0-flash."""
     prompt = f"Please read out the following text clearly:\n\n{text}"
     return client.models.generate_content(
-        model='gemini-2.0-flash',
+        model='gemini-3.8-flash-lite-tts',
         contents=prompt,
         config=types.GenerateContentConfig(
             response_modalities=["AUDIO"],
