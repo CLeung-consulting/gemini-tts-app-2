@@ -1,4 +1,6 @@
+import io
 import os
+import wave
 import streamlit as st
 from google import genai
 from google.genai import types
@@ -58,7 +60,18 @@ else:
     transcript_text = st.text_area("Paste your article text here:", height=200)
 
 
-# Retry handler for Gemini API calls
+def convert_pcm_to_wav(pcm_bytes: bytes, sample_rate: int = 24000, channels: int = 1, sample_width: int = 2) -> bytes:
+    """Wraps raw PCM audio bytes with a standard RIFF WAV header."""
+    wav_io = io.BytesIO()
+    with wave.open(wav_io, 'wb') as wav_file:
+        wav_file.setnchannels(channels)
+        wav_file.setsampwidth(sample_width)  # 2 bytes = 16-bit PCM
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(pcm_bytes)
+    return wav_io.getvalue()
+
+
+# Retry handlers
 @retry(
     stop=stop_after_attempt(4),
     wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -66,10 +79,10 @@ else:
     reraise=True
 )
 def translate_text(client, text, language):
-    """Step 1: Translate text using standard text generation."""
+    """Step 1: Translate text using gemini-2.0-flash."""
     prompt = f"Translate the following text into {language}. Return ONLY the translation, optimized for spoken reading, with no extra commentary:\n\n{text}"
     response = client.models.generate_content(
-        model='gemini-3.5-flash-lite',
+        model='gemini-2.0-flash',
         contents=prompt
     )
     return response.text
@@ -82,10 +95,10 @@ def translate_text(client, text, language):
     reraise=True
 )
 def generate_audio(client, text, voice):
-    """Step 2: Generate audio soundtrack from translated text."""
+    """Step 2: Generate audio soundtrack using gemini-2.0-flash."""
     prompt = f"Please read out the following text clearly:\n\n{text}"
     return client.models.generate_content(
-        model='gemini-3.8-flash-lite-tts',
+        model='gemini-2.0-flash',
         contents=prompt,
         config=types.GenerateContentConfig(
             response_modalities=["AUDIO"],
@@ -122,29 +135,29 @@ if st.button("Generate Soundtrack", type="primary"):
             with st.spinner("Generating speech soundtrack..."):
                 response = generate_audio(client, processed_text, voice_choice)
 
-                audio_bytes = None
-                mime_type = "audio/wav"
+                raw_pcm_bytes = None
 
                 if response.candidates and response.candidates[0].content.parts:
                     for part in response.candidates[0].content.parts:
                         if part.inline_data and part.inline_data.mime_type.startswith("audio/"):
-                            audio_bytes = part.inline_data.data
-                            mime_type = part.inline_data.mime_type
+                            raw_pcm_bytes = part.inline_data.data
                             break
 
-                if audio_bytes:
+                if raw_pcm_bytes:
+                    # Convert raw PCM bytes to valid WAV format with headers
+                    wav_bytes = convert_pcm_to_wav(raw_pcm_bytes, sample_rate=24000, channels=1, sample_width=2)
+
                     st.success("Audio soundtrack generated successfully!")
-                    
-                    file_ext = "pcm" if "pcm" in mime_type else ("wav" if "wav" in mime_type else "mp3")
-                    file_name = f"gemini_soundtrack.{file_ext}"
 
-                    st.audio(audio_bytes, format=mime_type)
+                    # Audio Player
+                    st.audio(wav_bytes, format="audio/wav")
 
+                    # Download button
                     st.download_button(
-                        label=f"📥 Download Audio (.{file_ext})",
-                        data=audio_bytes,
-                        file_name=file_name,
-                        mime=mime_type
+                        label="📥 Download Audio (.wav)",
+                        data=wav_bytes,
+                        file_name="gemini_soundtrack.wav",
+                        mime="audio/wav"
                     )
                 else:
                     st.error("Model responded, but no raw audio data was returned.")
