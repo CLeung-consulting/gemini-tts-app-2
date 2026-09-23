@@ -82,7 +82,7 @@ def translate_text(client, text, language):
     """Step 1: Translate text using gemini-2.0-flash."""
     prompt = f"Translate the following text into {language}. Return ONLY the translation, optimized for spoken reading, with no extra commentary:\n\n{text}"
     response = client.models.generate_content(
-        model='gemini-3.8-flash-lite',
+        model='gemini-3.5-flash-lite',
         contents=prompt
     )
     return response.text
